@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_pdf-viewer_pdf__display_pdf",
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import pypdf; print\\('pypdf ok'\\)\")",
+      "Bash(python -c \"import fitz; print\\('fitz ok'\\)\")",
+      "Bash(pip install *)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\valne\\\\neme\\\\terzagi_problem\")",
+      "mcp__MATLAB__evaluate_matlab_code"
+    ]
+  }
+}
