@@ -1,10 +1,4 @@
-# User Guide — TP3: Poroelasticidad (Terzaghi)
-
-This guide is for the **end user / student** who wants to run the simulations,
-inspect results, and compare them with the analytical solution. No knowledge of
-the implementation is required.
-
----
+# Terzaghi's Problem - Code Overview
 
 ## 1. What this code solves
 
