@@ -76,25 +76,30 @@ Contraction factor:  ρ_fs = α²M / (K_dr + α²M)  <  1  always.
 
 ```
 terzagi_problem/
-├── tp3.m                        Main driver
+├── main.m                        Main driver
 ├── meshes/
 │   └── generateColumnMesh.m
 ├── src/
-│   ├── elements/
-│   │   ├── shapeFunctions.m
-│   │   ├── shapeFunctionsDer.m
-│   │   └── getBMatrix.m
 │   ├── assembly/
 │   │   ├── assembleMechanical.m
 │   │   ├── assemblePoroelastic.m
 │   │   └── assembleLoad.m
+│   ├── elements/
+│   │   ├── shapeFunctions.m
+│   │   ├── shapeFunctionsDer.m
+│   │   └── getBMatrix.m
+│   ├── postprocess/
+│   |   ├──  analyticalTerzaghi.m
+│   |   └── plotConsolidation.m
 │   ├── solvers/
 │   │   ├── staggeredSolver.m
 │   │   └── fixedStressSolver.m
-│   └── postprocess/
-│       ├── analyticalTerzaghi.m
-│       └── plotConsolidation.m
-└── (legacy: tp2.m, lectorMalla.m, etc. unchanged)
+│   ├── terzaghi_funs/
+│   │   ├── buildCaseBC.m
+│   │   ├── buildGlobalMatrices.m
+│   │   ├── plotPressureNorm.m
+│   │   └── undrainedIC.m
+└── (legacy: old/)
 ```
 
 ### 2.1 `mesh` struct convention
@@ -177,7 +182,7 @@ Applies a uniform compressive normal traction `sigma0` on every edge whose
 nodes all sit at `y = max(y)`. The outward normal on the top face is `+y`,
 so the traction vector is `[0; -sigma0]` (compression).
 
-### 4.4 Global assembly (in `tp3.m`)
+### 4.4 Global assembly (in `main.m`)
 
 Performed once per parameter set by the local helper
 `buildGlobalMatrices(mesh, eleType, params, npg)`. Sparse matrices are
@@ -277,7 +282,7 @@ plot(t_hist, uy_top, 'o-')
 
 ---
 
-## 7. The driver script `tp3.m`
+## 7. The driver script `main.m`
 
 Logical sections (all separated by `%%` cell markers):
 
@@ -340,7 +345,7 @@ with a one-line change.
 
 ### 9.2 Adding new physics (e.g. body forces, gravity)
 
-* Augment `F_ext` in `tp3.m` (do **not** modify the solvers — they treat
+* Augment `F_ext` in `main.m` (do **not** modify the solvers — they treat
   `F_ext` as opaque).
 * For time-dependent loads, replace `F_ext` with a function handle and
   evaluate it inside the time loop. This requires adding two lines to
@@ -375,18 +380,4 @@ The implementation was sanity-checked against:
 
 Re-run these checks after any change to assembly or solvers.
 
----
 
-## 11. Known limitations / future work
-
-* Equal-order P-U interpolation: stable here because Table 1 is well below
-  the inf-sup limit; for incompressible undrained conditions consider
-  Q4P1 (linear pressure / bilinear displacement) or PSPG stabilisation.
-* Single-element width (`nx=1`) is sufficient for the 1D Terzaghi
-  problem; for true 2D geometries refine `nx` and verify mesh independence.
-* The solvers store *full* `U_hist` and `P_hist` only at `saveTimes`. For
-  long simulations consider streaming to disk.
-* `lectorMalla.m` and legacy meshes (`malla_*.dat`) belong to TP2 and are
-  retained only for backward compatibility.
-
----
