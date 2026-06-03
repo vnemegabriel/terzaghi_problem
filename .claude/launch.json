@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "terzaghi-static", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8753"], "port": 8753 }
+  ]
+}

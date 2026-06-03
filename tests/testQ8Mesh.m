@@ -67,12 +67,14 @@ verifyLessThan(testCase, norm(Ke - Ke', 'fro') / norm(Ke,'fro'), 1e-10)
 end
 
 function testQ8PoroelasticSizes(testCase)
+% Mixed u-p: pressure is interpolated on the 4 corner nodes only (Q4 basis),
+% so He/Se are [4x4] and Qe is [16x4] for a Q8 displacement element.
 mesh = generateColumnMesh(1.0, 1.0, 1, 1, 'Q8');
 nodes = mesh.nodes(mesh.elements{1}, :);
 [He, Qe, Se] = assemblePoroelastic(nodes, 'Q8', 1e-9, 1.0, 0.4, 4.17e7, 2);
-verifyEqual(testCase, size(He), [8  8])
-verifyEqual(testCase, size(Qe), [16 8])
-verifyEqual(testCase, size(Se), [8  8])
+verifyEqual(testCase, size(He), [4  4])
+verifyEqual(testCase, size(Qe), [16 4])
+verifyEqual(testCase, size(Se), [4  4])
 verifyLessThan(testCase, norm(He - He', 'fro'), 1e-15)
 verifyLessThan(testCase, norm(Se - Se', 'fro'), 1e-15)
 end
@@ -108,8 +110,7 @@ F            = assembleLoad(mesh, 'Q8', p.sigma0, 2);
 
 Moed = p.lambda + 2*p.mu;
 p0   = p.alpha * p.Mbiot * p.sigma0 / (Moed + p.alpha^2 * p.Mbiot);
-nNod = size(mesh.nodes,1);
-[U0, P0] = undrainedIC(K, Q, F, freeU, freeP, p0, nNod);
+[U0, P0] = undrainedIC(K, Q, F, freeU, freeP, p0);
 
 [~, P_hist, t_hist, iter, ~] = staggeredSolver( ...
     K, H, Q, S, F, U0, P0, freeU, freeP, ...
@@ -117,9 +118,12 @@ nNod = size(mesh.nodes,1);
 
 verifyTrue(testCase, all(iter(iter>0) < 50))
 
-% Compare centreline pressures
-on_centre = abs(mesh.nodes(:,1)) < 1e-10;
-yC = mesh.nodes(on_centre, 2);
+% Compare centreline pressures. Pressure DOFs live on corner nodes only.
+cornerNodes = pressureNodeMap(mesh);
+xC = mesh.nodes(cornerNodes, 1);
+yC = mesh.nodes(cornerNodes, 2);
+on_centre = abs(xC) < 1e-10;
+yC   = yC(on_centre);
 pFEM = P_hist(on_centre, 1);
 [ySorted, iS] = sort(yC);
 pFEM = pFEM(iS);

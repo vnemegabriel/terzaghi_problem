@@ -21,6 +21,19 @@ Three sub-tasks are addressed:
    (designed to diverge: study of the coupling ratio).
 3. **Fixed-stress split** with Table 2 properties (unconditionally stable).
 
+### Finite-element discretisation
+
+The column is discretised with quadrilateral elements (`eleType` in `main.m`).
+The **default run uses Q4** (bilinear) elements with equal-order interpolation
+for displacement and pressure.
+
+The code also supports **Q8** displacement. In that case pressure is still
+interpolated on the **corner nodes only** (bilinear Q4 basis), giving a
+Taylor–Hood mixed element that satisfies the inf-sup (LBB) condition — for Q4
+the corner basis coincides with the displacement basis, so the two reduce to
+equal-order. The pressure DOF map that handles both cases lives in
+`src/terzaghi_funs/pressureNodeMap.m`.
+
 ---
 
 ## 2. Requirements
@@ -35,17 +48,24 @@ Three sub-tasks are addressed:
 
 ```
 terzagi_problem/
-├── tp3.m                    <-- main script (run this)
+├── main.m                   <-- main script (run this; also saves figs/)
 ├── meshes/
 │   └── generateColumnMesh.m
 ├── src/
-│   ├── elements/            (shape functions, B matrix)
+│   ├── elements/            (shape functions, B matrix, Gauss data)
 │   ├── assembly/            (K, H, Q, S, F)
 │   ├── solvers/             (staggered, fixed-stress)
+│   ├── terzaghi_funs/       (global assembly, BCs, IC, pressure DOF map)
+│   ├── utils/               (constitutive matrix)
 │   └── postprocess/         (analytical, plots)
+├── figs/                    (figures written by main.m)
+├── report/                  (Informe_TP3.tex + fea1.bib)
+├── tests/                   (runAllTests.m + unit tests)
+├── old/                     (legacy single-field elasticity code)
+├── esquema_resolucion.html  (step-by-step HTML presentation)
 └── documentation/
-    ├── user_guide.md        (this file)
-    └── developer_guide.md
+    ├── developer_guide.md
+    └── audit_report.md
 ```
 
 ---
@@ -55,16 +75,17 @@ terzagi_problem/
 From the project root:
 
 ```matlab
->> run('tp3.m')
+>> run('main.m')
 ```
 
 The script automatically adds the `src/...` folders to the path, builds the
 mesh, assembles the global matrices, and runs all three tasks back-to-back.
 
-Expected console output:
+Expected console output (with the default `eleType = 'Q4'`, `nx = 2`,
+`ny = 20` mesh):
 
 ```
-Mesh: 42 nodes, 20 elements (Q4)
+Mesh: 63 nodes, 40 elements (Q4)
 
 === Table 1 ===
   Moed          = 1.2e+08 Pa
@@ -88,35 +109,44 @@ Mesh: 42 nodes, 20 elements (Q4)
   Mean iterations/step: 2.05
 ```
 
-Six figures are opened:
-1. Pressure profile (Table 1) — FEM vs analytical at several times.
-2. Displacement profile (Table 1) — FEM vs analytical.
-3. Pressure-iteration norm history (Table 2 staggered, divergence study).
-4. (figures 4–6 mirror 1–2 for fixed-stress with Table 2.)
+Three result figures are generated and **saved to `figs/`** (the exact figures
+embedded in `report/Informe_TP3.tex`):
+1. `tp3_tabla1.png` — Table 1 staggered: pressure profile + consolidation
+   settlement increment vs depth, FEM vs analytical.
+2. `tp3_divergencia.png` — Table 2 staggered: pressure-norm history per
+   iteration (divergence study).
+3. `tp3_fixedstress.png` — Table 2 fixed-stress: pressure profile, FEM vs
+   analytical.
+
+A fourth figure, `tp3_esquema.png` (problem schematic), is static geometry and
+already lives in `figs/`; its generator is kept commented at the end of
+`main.m` and can be re-enabled if needed.
 
 ---
 
 ## 5. Changing problem parameters
 
-All physical and numerical parameters live in **`tp3.m`** at the top of the
+All physical and numerical parameters live in **`main.m`** at the top of the
 file. The most common adjustments:
 
-| What you want to change         | Variable                | Lines |
-|---------------------------------|-------------------------|-------|
-| Mesh refinement                 | `nx`, `ny`              | ~12   |
-| Column dimensions               | `W`, `L`                | ~10   |
-| Applied surface load            | `sigma0`                | ~22   |
-| Material set 1                  | `p1.lambda` … `p1.muf`  | ~28   |
-| Material set 2                  | `p2.lambda` … `p2.muf`  | ~84   |
-| Time step Task 1                | `dt1`                   | ~58   |
-| End time Task 1                 | `tmax1`                 | ~59   |
-| Time step Tasks 2 & 3           | `dt2`                   | ~104  |
-| End time Tasks 2 & 3            | `tmax2`                 | ~105  |
-| Snapshot times to save / plot   | `saveTimes1`, `saveTimes2` | ~61, 106 |
-| Convergence tolerance           | `tol`, `tol3`           | ~60, 122 |
-| Maximum inner iterations        | `maxIter`, `maxIter3`   | ~60, 123 |
+| What you want to change         | Variable                       | Lines |
+|---------------------------------|--------------------------------|-------|
+| Column dimensions               | `W`, `L`                       | ~7–8  |
+| Mesh refinement                 | `nx`, `ny`                     | ~9–10 |
+| Element type                    | `eleType` (`'Q4'` / `'Q8'`)    | ~11   |
+| Gauss points per direction      | `npg`                          | ~12   |
+| Applied surface load            | `sigma0`                       | ~22   |
+| Material set 1                  | `params1.lambda` … `params1.muf` | ~26 |
+| Material set 2                  | `params2.lambda` … `params2.muf` | ~82 |
+| Time step Task 1                | `dt1`                          | ~63   |
+| End time Task 1                 | `tmax1`                        | ~64   |
+| Time step Tasks 2 & 3           | `dt2`                          | ~112  |
+| End time Tasks 2 & 3            | `tmax2`                        | ~113  |
+| Snapshot times to save / plot   | `saveTimes1`, `saveTimes2`     | ~67, 114 |
+| Convergence tolerance           | `tol`, `tol3`                  | ~65, 129 |
+| Maximum inner iterations        | `maxIter`, `maxIter3`          | ~66, 130 |
 
-After editing, re-run `tp3.m`.
+After editing, re-run `main.m`.
 
 ---
 
@@ -195,12 +225,14 @@ controls staggered-solver stability:
 ```matlab
 % Run everything with defaults
 clear; clc; close all
-run('tp3.m')
+run('main.m')
 
 % Inspect the saved staggered Task 1 pressure at t=600s
-% (variables remain in the workspace after the script finishes)
-yN = mesh.nodes(:,2);
-[ySorted, idx] = sort(yN);
+% (variables remain in the workspace after the script finishes).
+% Pressure DOFs live on corner nodes only, so index by those nodes:
+cornerNodes = pressureNodeMap(mesh);
+yP = mesh.nodes(cornerNodes, 2);
+[ySorted, idx] = sort(yP);
 plot(P1(idx,3), ySorted, 'o-')   % third column = 600s
 xlabel('p [Pa]'); ylabel('x [m]'); grid on
 ```

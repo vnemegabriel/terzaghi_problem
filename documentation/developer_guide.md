@@ -27,17 +27,34 @@ Variables:
 * `μ_f`: fluid viscosity     [Pa·s]
 * `C`  : plane-strain stiffness matrix
 
-### 1.2 Galerkin discretisation (Q4 / Q8 / CST)
+### 1.2 Galerkin discretisation — mixed u-p (Taylor–Hood)
 
-Same shape functions `N` are used for `u` and `p` (equal-order). Element
-matrices:
+Displacement and pressure use **different** shape functions. The
+displacement field uses the full element basis `Nᵤ` (Q4, Q8 or CST, with
+`n` nodes), while the pressure field is interpolated on the **corner nodes
+only** with the bilinear basis `Nₚ` (`nₚ` nodes):
 
-| Matrix | Definition                              | Size            |
-|-------:|-----------------------------------------|-----------------|
-|  Kₑ    | ∫ Bᵀ C B dΩ                             | 2n × 2n         |
-|  Hₑ    | ∫ (∇N)ᵀ (k/μ_f) (∇N) dΩ                  | n × n           |
-|  Qₑ    | ∫ α Bᵀ m N dΩ,  m = [1,1,0]ᵀ            | 2n × n          |
-|  Sₑ    | ∫ (1/M) Nᵀ N dΩ                         | n × n           |
+| eleType | n (displacement) | nₚ (pressure) |
+|---------|------------------|---------------|
+| 'Q4'    | 4                | 4 (all nodes) |
+| 'Q8'    | 8                | 4 (corners)   |
+| 'CST'   | 3                | 3 (all nodes) |
+
+This satisfies the **inf-sup (LBB) condition** for the coupled saddle-point
+system; equal-order `u`–`p` interpolation (e.g. Q8 pressure) is unstable
+and was the previous, incorrect behaviour. For Q4 and CST the two bases
+coincide because those elements have no non-corner nodes.
+
+The geometry / isoparametric map and the strain-displacement matrix `B`
+always use the displacement basis `Nᵤ`; only the pressure terms use `Nₚ`.
+Element matrices:
+
+| Matrix | Definition                                | Size            |
+|-------:|-------------------------------------------|-----------------|
+|  Kₑ    | ∫ Bᵀ C B dΩ                               | 2n × 2n         |
+|  Hₑ    | ∫ (∇Nₚ)ᵀ (k/μ_f) (∇Nₚ) dΩ                  | nₚ × nₚ         |
+|  Qₑ    | ∫ α Bᵀ m Nₚ dΩ,  m = [1,1,0]ᵀ             | 2n × nₚ         |
+|  Sₑ    | ∫ (1/M) Nₚᵀ Nₚ dΩ                          | nₚ × nₚ         |
 
 ### 1.3 Time discretisation (backward Euler)
 
@@ -87,6 +104,8 @@ terzagi_problem/
 │   ├── elements/
 │   │   ├── shapeFunctions.m
 │   │   ├── shapeFunctionsDer.m
+│   │   ├── precomputeGaussData.m
+│   │   ├── gauss1D.m
 │   │   └── getBMatrix.m
 │   ├── postprocess/
 │   |   ├──  analyticalTerzaghi.m
@@ -97,6 +116,7 @@ terzagi_problem/
 │   ├── terzaghi_funs/
 │   │   ├── buildCaseBC.m
 │   │   ├── buildGlobalMatrices.m
+│   │   ├── pressureNodeMap.m
 │   │   ├── plotPressureNorm.m
 │   │   └── undrainedIC.m
 └── (legacy: old/)
@@ -118,16 +138,23 @@ for Q4; mid-edge nodes follow after the corners for Q8 (1-2-3-4-5-6-7-8).
 
 * Mechanical DOFs are interleaved per node:
   `[ux₁, uy₁, ux₂, uy₂, …]`  ⇒  total `2·nNod`.
-* Pressure DOFs use one DOF per node:
-  `[p₁, p₂, …]`               ⇒  total `nNod`.
+* Pressure DOFs use one DOF per **corner** node only (mixed u-p), so on a
+  Q8 mesh there are fewer pressure DOFs than displacement nodes. The global
+  pressure size and the node→pressure-DOF map come from `pressureNodeMap`
+  (the single source of truth):
 
-For element `k` with nodes `gn`:
+```matlab
+[cornerNodes, nodeToP, nDofP] = pressureNodeMap(mesh, eleType);
+```
+
+For element `k` with nodes `gn` (corners first), where `nP` is the number
+of pressure nodes for the element:
 
 ```matlab
 dofU = zeros(1, 2*nNodEle);
 dofU(1:2:end) = 2*gn - 1;
 dofU(2:2:end) = 2*gn;
-dofP = gn;
+dofP = nodeToP(gn(1:nP));     % corner nodes -> pressure DOF space
 ```
 
 ---
@@ -154,13 +181,32 @@ Computes the strain-displacement matrix in **global** coordinates and the
 Jacobian determinant. Builds on `shapeFunctionsDer`. The B matrix uses
 Voigt convention `[εxx, εyy, 2εxy]`.
 
+### 3.4 `precomputeGaussData(eleType, npg) -> gd`
+
+Caches, at every Gauss point, **two** bases evaluated once and reused across
+all elements (they are independent of physical coordinates):
+
+* `gd.N` / `gd.dN`  — displacement / geometry basis (full eleType), used for
+  `K`, `B` and the Jacobian.
+* `gd.Np` / `gd.dNp` — pressure basis on corner nodes only (Q4 for Q4/Q8),
+  used for `H`, `Q`, `S`.
+* `gd.w`, `gd.nGP`, `gd.nP` — quadrature weights, number of Gauss points, and
+  number of pressure (corner) nodes.
+
+Keeping the two bases separate here is what makes the mixed u-p formulation
+coherent: the assembly functions never interpolate `u` and `p` with the same
+shape functions.
+
 ### Adding a new element type
 
 1. Append a new `case` block in `shapeFunctions.m` and `shapeFunctionsDer.m`.
-2. Update `assembleLoad.m` `switch eleType` to describe the edge connectivity.
-3. No change required in `getBMatrix.m`, `assembleMechanical.m`, or
-   `assemblePoroelastic.m`: they are agnostic of element type as long as the
-   above two return correct values.
+2. Add the type to `precomputeGaussData.m`, defining its **pressure (corner)
+   basis** (`gd.Np`/`gd.dNp`/`gd.nP`) — typically the lowest-order sub-element.
+3. Add the type to `pressureNodeMap.m`, declaring how many leading local
+   nodes are corners.
+4. Update `assembleLoad.m` `switch eleType` to describe the edge connectivity.
+5. No change required in `getBMatrix.m`, `assembleMechanical.m`, or
+   `assemblePoroelastic.m`: they read everything they need from `gd`.
 
 ---
 
@@ -171,10 +217,14 @@ Voigt convention `[εxx, εyy, 2εxy]`.
 Returns the element stiffness matrix `Ke = ∫ Bᵀ C B dΩ`. CST is integrated
 in closed form; Q4/Q8 use `nPointsGauss × nPointsGauss` Gauss quadrature.
 
-### 4.2 `assemblePoroelastic(nodesElem, eleType, k, μ_f, α, M, nPg) -> He, Qe, Se`
+### 4.2 `assemblePoroelastic(nodesElem, eleType, k, μ_f, α, M, nPg, gd) -> He, Qe, Se`
 
 Returns the three poroelastic element matrices in **a single Gauss loop**,
-avoiding redundant Jacobian inversions.
+avoiding redundant Jacobian inversions. `B` and the Jacobian use the
+displacement basis; `He` `[nₚ×nₚ]`, `Se` `[nₚ×nₚ]` and the pressure side of
+`Qe` `[2n×nₚ]` use the corner (pressure) basis from `gd`. The optional `gd`
+argument is precomputed shape data (see `precomputeGaussData`); if omitted it
+is computed in-place.
 
 ### 4.3 `assembleLoad(mesh, eleType, sigma0, nPg) -> F`
 
@@ -182,13 +232,16 @@ Applies a uniform compressive normal traction `sigma0` on every edge whose
 nodes all sit at `y = max(y)`. The outward normal on the top face is `+y`,
 so the traction vector is `[0; -sigma0]` (compression).
 
-### 4.4 Global assembly (in `main.m`)
+### 4.4 Global assembly — `src/terzaghi_funs/buildGlobalMatrices.m`
 
-Performed once per parameter set by the local helper
-`buildGlobalMatrices(mesh, eleType, params, npg)`. Sparse matrices are
-filled via direct indexing (`K(dofU,dofU) = K(dofU,dofU) + Ke`). For
-larger meshes, switch to triplet (i,j,v) assembly + a single `sparse()`
-call — straightforward but currently unnecessary.
+`[K, H, Q, S] = buildGlobalMatrices(mesh, eleType, params, npg)` is called
+once per parameter set. It pre-computes `gd = precomputeGaussData(...)` and
+the corner-pressure map `pressureNodeMap(...)`, loops over elements, and
+fills pre-allocated triplet `(i, j, v)` vectors that are turned into sparse
+matrices by a single `sparse()` call per matrix (faster than incremental
+`K(dofU,dofU) = … + Ke` indexing on large meshes). Pressure entries scatter
+through `nodeToP`, so `H`/`S` are `nDofP × nDofP` and `Q` is `nDofU × nDofP`
+with `nDofP` = number of corner nodes.
 
 ---
 
@@ -221,7 +274,7 @@ Same signature plus one extra argument:
 ```
 
 `Lstab` is the stabilisation matrix `(α²/K_dr) · M_p`. The caller is
-responsible for building it (see `tp3.m` lines around `Lstab2 = …`).
+responsible for building it (see `main.m` lines around `Lstab2 = …`).
 
 Why pass the matrix instead of α and K_dr? Because the solver does not
 know the integration rule used to build `M_p`. Passing the assembled
@@ -263,7 +316,9 @@ high-frequency oscillations appear.
 
 Produces two figures (pressure, displacement) comparing FEM nodal values
 on the column centreline with the analytical series at every snapshot
-time. Colours are matched between FEM markers and analytical dashed
+time. Pressure is plotted at the **corner nodes** (obtained via
+`pressureNodeMap`), since those carry the pressure DOFs; displacement uses
+all nodes. Colours are matched between FEM markers and analytical dashed
 lines via `lines(nSave)`.
 
 ### 6.3 Adding a new diagnostic
@@ -290,20 +345,19 @@ Logical sections (all separated by `%%` cell markers):
 2. Applied load definition.
 3. Table 1 parameters + dimensionless ratio + cv + p₀ printout.
 4. Global matrix assembly via `buildGlobalMatrices`.
-5. BC vector construction via `buildBC`.
+5. BC vector construction via `buildCaseBC`.
 6. Initial conditions via `undrainedIC`.
 7. Task 1 solver call + plot.
 8. Table 2 parameters + same assembly pipeline.
 9. Task 2 staggered call (expected to diverge).
 10. Task 3 fixed-stress call (with `Lstab` build).
-11. Local helper functions at the bottom of the file.
-
-Helper functions defined at the file end:
+Supporting functions live in `src/terzaghi_funs/` (not inside `main.m`):
 
 | Function              | Purpose                                                  |
 |-----------------------|----------------------------------------------------------|
 | `buildGlobalMatrices` | Loop over elements, scatter Kₑ Hₑ Qₑ Sₑ into globals.    |
-| `buildBC`             | Compute logical/index sets for free mech + pressure DOFs |
+| `pressureNodeMap`     | Corner-node list + node→pressure-DOF map (mixed u-p).    |
+| `buildCaseBC`         | Compute logical/index sets for free mech + pressure DOFs |
 | `undrainedIC`         | Solve `K u = F + Q p₀` to get the t=0⁺ displacement field|
 | `plotPressureNorm`    | Convergence-history plot for the divergence study        |
 
@@ -354,11 +408,13 @@ with a one-line change.
 
 ### 9.3 Switching to Q8 / CST
 
-Just edit `eleType = 'Q4'` to `'Q8'` or `'CST'` in `tp3.m`. The element
-library, assembly, and load routines already support all three. For
-Q8 you must also provide a Q8 mesh (the supplied `generateColumnMesh`
-only emits Q4) — see `lectorMalla.m` (legacy) for an example of reading
-a Q8 .dat file.
+Just edit `eleType` in `main.m`. The element library, assembly, load, BC,
+IC and post-processing routines already support Q4 and Q8 end-to-end
+(including the mixed-order corner-pressure DOF bookkeeping via
+`pressureNodeMap`); `generateColumnMesh` emits both Q4 and Q8 column
+meshes. CST is supported at the element/assembly level but has no built-in
+mesh generator here — see `lectorMalla.m` (legacy) for reading a `.dat`
+mesh.
 
 ---
 

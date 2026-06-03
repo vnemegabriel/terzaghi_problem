@@ -7,7 +7,12 @@
       "Bash(python -c \"import fitz; print\\('fitz ok'\\)\")",
       "Bash(pip install *)",
       "Bash(dir /s /b \"C:\\\\Users\\\\valne\\\\neme\\\\terzagi_problem\")",
-      "mcp__MATLAB__evaluate_matlab_code"
+      "mcp__MATLAB__evaluate_matlab_code",
+      "mcp__MATLAB__check_matlab_code",
+      "Bash(pdftotext -layout \"MSCa___TP3_2026.pdf\" msca_tp3.txt)",
+      "Bash(pdftotext -layout \"lineamientos_tps_2026.pdf\" lineamientos.txt)",
+      "Bash(grep -iE \"\\\\.\\(bib|png|jpg|jpeg|pdf|tex\\)$\")",
+      "mcp__MATLAB__run_matlab_file"
     ]
   }
 }

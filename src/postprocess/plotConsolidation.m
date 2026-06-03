@@ -15,6 +15,10 @@ Mbiot = params.Mbiot;
 alpha = params.alpha;
 p0   = alpha * Mbiot * sigma0 / (Moed + alpha^2 * Mbiot);
 
+% Pressure DOFs live on corner nodes only (mixed u-p formulation).
+cornerNodes = pressureNodeMap(mesh);
+yP = mesh.nodes(cornerNodes, 2);
+
 % --- Pressure plot ---
 figure('Name', ['Pressure - ' titleStr]);
 hold on
@@ -23,11 +27,9 @@ for s = 1:nSave
     [p_anal, ~] = analyticalTerzaghi(x_query, t_hist(s), params);
     plot(p_anal / p0, x_query, '--', 'Color', colors(s,:), 'LineWidth', 1.2)
 
-    % FEM nodal pressures on centreline
+    % FEM nodal pressures at corner nodes, sorted by height
     pFEM_nodes = P_hist(:, s);
-    yNodes = mesh.nodes(:,2);
-    % sort by y
-    [ySorted, idx] = sort(yNodes);
+    [ySorted, idx] = sort(yP);
     pSorted = pFEM_nodes(idx);
     plot(pSorted / p0, ySorted, '-o', 'Color', colors(s,:), 'MarkerSize', 3, ...
         'DisplayName', sprintf('t=%.0f s', t_hist(s)))

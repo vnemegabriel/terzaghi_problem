@@ -16,22 +16,25 @@ end
 
 function err = solveAndError(W, L, nx, ny, eleType, dt, tmax, params)
 mesh = generateColumnMesh(W, L, nx, ny, eleType);
-nNod = size(mesh.nodes, 1);
 [K, H, Q, S] = buildGlobalMatrices(mesh, [], params, 2);
 F            = assembleLoad(mesh, eleType, params.sigma0, 2);
 [freeU, freeP] = buildCaseBC(mesh, W, L);
 
 Moed = params.lambda + 2*params.mu;
 p0   = params.alpha * params.Mbiot * params.sigma0 / (Moed + params.alpha^2 * params.Mbiot);
-[U0, P0] = undrainedIC(K, Q, F, freeU, freeP, p0, nNod);
+[U0, P0] = undrainedIC(K, Q, F, freeU, freeP, p0);
 
 [~, P_hist, t_hist, ~, ~] = staggeredSolver( ...
     K, H, Q, S, F, U0, P0, freeU, freeP, ...
     dt, tmax, 1e-10, 100, tmax);
 
-% L2 error along centreline
-on_centre = abs(mesh.nodes(:,1)) < 1e-10;
-yC = mesh.nodes(on_centre, 2);
+% L2 error along centreline. Pressure DOFs live on corner nodes only,
+% so the centreline must be selected within the pressure (corner) space.
+cornerNodes = pressureNodeMap(mesh);
+xC = mesh.nodes(cornerNodes, 1);
+yC = mesh.nodes(cornerNodes, 2);
+on_centre = abs(xC) < 1e-10;
+yC   = yC(on_centre);
 pFEM = P_hist(on_centre, 1);
 [ySorted, iS] = sort(yC);
 pFEM = pFEM(iS);
@@ -71,8 +74,8 @@ h = 1 ./ nyList(:);
 loglog_slope = polyfit(log(h), log(err), 1);
 slope = loglog_slope(1);
 fprintf('Q8 mesh-h slope: %.2f (expected >= 2)\n', slope)
-% Q8 with equal-order pressure typically gives ~order 2 here (the pressure
-% has only a weak discontinuity near x=L that limits the asymptotic rate)
+% Q8 displacement with Q4 (corner) pressure — Taylor-Hood mixed element.
+% Pressure is bilinear, so the pressure L2 rate is ~order 2 here.
 verifyGreaterThan(testCase, slope, 1.5)
 end
 

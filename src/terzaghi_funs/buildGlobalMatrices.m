@@ -1,12 +1,5 @@
 function [K, H, Q, S] = buildGlobalMatrices(mesh, eleType, params, npg)
 % buildGlobalMatrices  Assemble global K, H, Q, S using triplet sparse format.
-%
-%   Replaces the previous `K(dofU,dofU) = K(dofU,dofU) + Ke` scatter pattern
-%   (O(N log N) per element) with a single `sparse(i, j, v, ...)` call after
-%   filling pre-allocated index/value vectors. 5-10x faster on meshes > 1000
-%   elements at no API cost.
-%
-%   If `eleType` is omitted (or []), it is read from `mesh.eleType`.
 
     if nargin < 2 || isempty(eleType)
         if isfield(mesh, 'eleType')
@@ -23,8 +16,9 @@ function [K, H, Q, S] = buildGlobalMatrices(mesh, eleType, params, npg)
     % Plane-strain constitutive matrix (default mode)
     C = getConstitutiveMatrix(params.lambda, params.mu, 'plane_strain');
 
+    % Mixed u-p: displacement on all nodes, pressure on corner nodes only.
+    [~, nodeToP, nDofP] = pressureNodeMap(mesh, eleType);
     nDofU = 2*nNod;
-    nDofP = nNod;
 
     % Estimate element size from first element (assumes uniform mesh)
     nNodEleMax = max(cellfun(@numel, mesh.elements));
@@ -55,11 +49,16 @@ function [K, H, Q, S] = buildGlobalMatrices(mesh, eleType, params, npg)
         [He, Qe, Se] = assemblePoroelastic(localNodes, eleType, ...
             params.kperm, params.muf, params.alpha, params.Mbiot, npg, gd);
 
-        % Mechanical DOF map
+        % Mechanical DOF map (all element nodes)
         dofU = zeros(1, 2*nNodEle);
         dofU(1:2:end) = 2*globalNodes - 1;
         dofU(2:2:end) = 2*globalNodes;
-        dofP = globalNodes;
+
+        % Pressure DOF map (corner nodes only -> pressure DOF space).
+        % He/Se are [nP x nP], Qe is [2*nNodEle x nP] with nP corner nodes.
+        nP   = size(He, 1);
+        dofP = nodeToP(globalNodes(1:nP));
+        dofP = dofP(:)';
 
         % Scatter Ke
         [II, JJ] = ndgrid(dofU, dofU);

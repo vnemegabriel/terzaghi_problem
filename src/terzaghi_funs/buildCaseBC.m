@@ -18,12 +18,10 @@ function [freeDofU, freeDofP] = buildCaseBC(mesh, W, L)
     fixedVec = reshape(fixedU', [], 1);
     freeDofU = allDofU(~fixedVec);
 
-    fixedP = false(nNod, 1);
-    for n = 1:nNod
-        if abs(mesh.nodes(n,2) - L) < tol       % top: p=0
-            fixedP(n) = true;
-        end
-    end
-    allDofP  = 1:nNod;
+    % Pressure lives on corner nodes only (mixed u-p formulation), so the
+    % pressure BC is expressed in pressure-DOF space, not node space.
+    [cornerNodes, ~, nDofP] = pressureNodeMap(mesh);
+    fixedP = abs(mesh.nodes(cornerNodes,2) - L) < tol;   % top: p=0
+    allDofP  = 1:nDofP;
     freeDofP = allDofP(~fixedP);
 end

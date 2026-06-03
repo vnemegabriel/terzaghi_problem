@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terzaghi · Esquema de resolución paso a paso</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Spectral:ital,wght@0,300;0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script" async></script>
+
+<style>
+:root{
+  --ink:#0d141d;
+  --ink-2:#111b26;
+  --paper:#ede4d3;
+  --paper-dim:#b8b09f;
+  --amber:#e8a13c;
+  --amber-soft:#f2c98a;
+  --cyan:#5fc7d6;
+  --rust:#d2592f;
+  --line:rgba(237,228,211,.12);
+  --line-strong:rgba(237,228,211,.28);
+  --serif:'Fraunces',Georgia,serif;
+  --body:'Spectral',Georgia,serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--ink);
+  color:var(--paper);
+  font-family:var(--body);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---- atmosphere: blueprint grid + glow ---- */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+.bg::before{
+  content:"";position:absolute;inset:0;
+  background-image:
+    linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:46px 46px;
+  mask-image:radial-gradient(ellipse 80% 70% at 50% 40%,#000 55%,transparent 100%);
+}
+.bg::after{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(900px 600px at 78% 12%,rgba(232,161,60,.10),transparent 60%),
+    radial-gradient(800px 700px at 12% 92%,rgba(95,199,214,.08),transparent 60%);
+}
+.grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.04;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ---- deck / slides ---- */
+.deck{position:relative;z-index:2;height:100vh;width:100vw}
+.slide{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:clamp(3.2rem,7vh,4.8rem) clamp(2rem,6vw,7rem);
+  overflow:hidden;
+  opacity:0;visibility:hidden;
+  transform:translateY(14px);
+  transition:opacity .5s ease,transform .5s ease,visibility .5s;
+}
+.slide.active{opacity:1;visibility:visible;transform:none}
+.slide.active .reveal{animation:rise .7s cubic-bezier(.2,.7,.2,1) backwards}
+.slide.active .reveal:nth-child(1){animation-delay:.06s}
+.slide.active .reveal:nth-child(2){animation-delay:.16s}
+.slide.active .reveal:nth-child(3){animation-delay:.26s}
+.slide.active .reveal:nth-child(4){animation-delay:.36s}
+.slide.active .reveal:nth-child(5){animation-delay:.46s}
+.slide.active .reveal:nth-child(6){animation-delay:.56s}
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+
+/* ---- typographic system ---- */
+.kicker{
+  font-family:var(--mono);font-size:.78rem;letter-spacing:.32em;
+  text-transform:uppercase;color:var(--amber);
+  display:flex;align-items:center;gap:1rem;margin-bottom:1.4rem;
+}
+.kicker::before{content:"";width:42px;height:1px;background:var(--amber);opacity:.7}
+h1{font-family:var(--serif);font-weight:900;line-height:1.02;
+  font-size:clamp(2.4rem,6vw,5.2rem);letter-spacing:-.02em}
+h2{font-family:var(--serif);font-weight:600;line-height:1.05;
+  font-size:clamp(1.7rem,3.8vw,3rem);letter-spacing:-.015em;margin-bottom:1.3rem}
+h2 em{font-style:italic;color:var(--amber-soft)}
+p,li{font-size:clamp(1rem,1.45vw,1.28rem);line-height:1.55;color:var(--paper);max-width:60ch}
+p.lead{color:var(--paper-dim);font-weight:300;font-size:clamp(1.1rem,1.7vw,1.5rem)}
+.muted{color:var(--paper-dim)}
+strong{color:var(--amber-soft);font-weight:500}
+.mono{font-family:var(--mono)}
+
+ul.clean{list-style:none;display:flex;flex-direction:column;gap:.85rem;margin-top:.5rem}
+ul.clean li{position:relative;padding-left:1.7rem;max-width:64ch}
+ul.clean li::before{content:"▸";position:absolute;left:0;color:var(--cyan);font-family:var(--mono)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:clamp(1.5rem,4vw,3.5rem);align-items:center}
+.cols.wide{grid-template-columns:1.05fr .95fr}
+
+.card{
+  background:linear-gradient(160deg,rgba(237,228,211,.06),rgba(237,228,211,.02));
+  border:1px solid var(--line-strong);border-radius:14px;
+  padding:clamp(1.1rem,2vw,1.8rem);backdrop-filter:blur(3px);
+}
+.eqbox{
+  background:rgba(8,13,19,.55);border:1px solid var(--line);
+  border-left:3px solid var(--amber);border-radius:10px;
+  padding:1rem 1.3rem;margin:.6rem 0;overflow-x:auto;
+}
+.eqbox.cyan{border-left-color:var(--cyan)}
+.eqbox .lbl{font-family:var(--mono);font-size:.7rem;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--paper-dim);display:block;margin-bottom:.2rem}
+
+figure{margin:0 auto;background:#fff;border-radius:12px;padding:.7rem;
+  box-shadow:0 24px 60px -20px rgba(0,0,0,.7);border:1px solid var(--line-strong);
+  max-width:100%}
+figure img{display:block;width:auto;max-width:100%;max-height:60vh;height:auto;
+  margin:0 auto;border-radius:4px}
+figcaption{font-family:var(--mono);font-size:.72rem;color:#33414f;
+  text-align:center;margin-top:.5rem;letter-spacing:.04em}
+
+.tag{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;
+  padding:.28rem .6rem;border:1px solid var(--line-strong);border-radius:999px;
+  color:var(--paper-dim);margin:.2rem .35rem .2rem 0}
+.tag.on{color:var(--ink);background:var(--amber);border-color:var(--amber);font-weight:600}
+.tag.cy{color:var(--ink);background:var(--cyan);border-color:var(--cyan);font-weight:600}
+
+.verdict{display:flex;gap:.9rem;align-items:flex-start;margin-top:.5rem}
+.verdict .dot{flex:0 0 auto;width:12px;height:12px;border-radius:50%;margin-top:.45rem}
+.ok{background:var(--cyan)} .bad{background:var(--rust)}
+
+/* ---- pipeline (roadmap) ---- */
+.pipe{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:1.4rem}
+.pipe .node{font-family:var(--mono);font-size:.8rem;padding:.55rem .8rem;
+  border:1px solid var(--line-strong);border-radius:8px;color:var(--paper-dim);
+  display:flex;align-items:center;gap:.5rem}
+.pipe .node b{color:var(--amber);font-weight:600}
+.pipe .arr{color:var(--cyan);align-self:center;font-family:var(--mono)}
+
+/* ---- element diagram ---- */
+.eldiagram{display:flex;gap:2.5rem;justify-content:center;align-items:center;flex-wrap:wrap}
+.elcap{text-align:center;font-family:var(--mono);font-size:.78rem;color:var(--paper-dim);margin-top:.6rem}
+.elcap b{color:var(--amber)}
+
+/* ---- chrome: progress, counter, dots, hint ---- */
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--amber),var(--rust));
+  z-index:30;transition:width .5s ease;box-shadow:0 0 12px rgba(232,161,60,.6)}
+.counter{position:fixed;top:1.4rem;right:1.7rem;z-index:30;font-family:var(--mono);
+  font-size:.8rem;color:var(--paper-dim);letter-spacing:.1em}
+.counter b{color:var(--paper)}
+.brand{position:fixed;top:1.4rem;left:1.7rem;z-index:30;font-family:var(--mono);
+  font-size:.74rem;letter-spacing:.2em;text-transform:uppercase;color:var(--paper-dim)}
+.dots{position:fixed;bottom:1.3rem;left:50%;transform:translateX(-50%);z-index:30;
+  display:flex;gap:.5rem}
+.dots button{width:8px;height:8px;border-radius:50%;border:none;cursor:pointer;padding:0;
+  background:var(--line-strong);transition:all .3s}
+.dots button.on{background:var(--amber);width:22px;border-radius:4px}
+.hint{position:fixed;bottom:1.2rem;right:1.7rem;z-index:30;font-family:var(--mono);
+  font-size:.72rem;color:var(--paper-dim);opacity:.7}
+.nav-zone{position:fixed;top:0;bottom:0;width:18%;z-index:20;cursor:pointer}
+.nav-zone.left{left:0} .nav-zone.right{right:0}
+
+mjx-container{color:var(--paper)!important}
+@media(max-width:920px){
+  .cols,.cols.wide{grid-template-columns:1fr;gap:1.2rem}
+  .slide{padding:4.2rem 1.4rem 3.4rem;overflow-y:auto;justify-content:flex-start}
+  p,li{max-width:none}
+  figure img{max-height:46vh}
+  h2{font-size:clamp(1.5rem,6vw,2rem)}
+}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="grain"></div>
+<div class="progress" id="prog"></div>
+<div class="brand">MSCA · TP3 · Poroelasticidad</div>
+<div class="counter"><b id="cur">01</b> / <span id="tot">14</span></div>
+
+<div class="deck" id="deck">
+
+  <!-- 0 — TITLE -->
+  <section class="slide">
+    <div class="reveal kicker">Problema de Terzaghi · Biot · deformación plana</div>
+    <h1 class="reveal">El esquema de<br>resolución,<br><em style="font-style:italic;color:var(--amber)">paso a paso.</em></h1>
+    <p class="reveal lead" style="margin-top:1.6rem">De la ecuación diferencial a la solución numérica: cómo se construye, se acopla y se estabiliza el problema poroelástico de consolidación 1D.</p>
+    <p class="reveal mono muted" style="margin-top:2rem;font-size:.8rem;letter-spacing:.15em">LUCAS PAULOS (63116) · VALENTIN NEME (63091)</p>
+  </section>
+
+  <!-- 1 — ROADMAP -->
+  <section class="slide">
+    <div class="reveal kicker">Mapa del recorrido</div>
+    <h2 class="reveal">Doce pasos, una sola <em>tubería</em></h2>
+    <p class="reveal lead">Cada paso transforma el problema: física → matemática → discreto → algebraico → solución.</p>
+    <div class="reveal pipe">
+      <div class="node"><b>1</b> Física</div><span class="arr">→</span>
+      <div class="node"><b>2</b> PDE de Biot</div><span class="arr">→</span>
+      <div class="node"><b>3</b> Matrices K,H,Q,S</div><span class="arr">→</span>
+      <div class="node"><b>4</b> Taylor–Hood</div><span class="arr">→</span>
+      <div class="node"><b>5</b> Ensamblaje</div><span class="arr">→</span>
+      <div class="node"><b>6</b> Tiempo</div>
+    </div>
+    <div class="reveal pipe">
+      <div class="node"><b>7</b> Staggered</div><span class="arr">→</span>
+      <div class="node"><b>8</b> Fixed-stress</div><span class="arr">→</span>
+      <div class="node"><b>9</b> CI + convergencia</div><span class="arr">→</span>
+      <div class="node"><b>10–12</b> Resultados</div>
+    </div>
+    <p class="reveal muted" style="margin-top:1.6rem;font-size:.95rem">La pregunta que organiza todo: <strong>¿por qué un esquema converge y otro estalla?</strong></p>
+  </section>
+
+  <!-- 2 — PHYSICS -->
+  <section class="slide">
+    <div class="cols wide">
+      <div>
+        <div class="reveal kicker">Paso 1 · El problema físico</div>
+        <h2 class="reveal">Una columna de suelo que se <em>consolida</em></h2>
+        <ul class="reveal clean">
+          <li>Columna de <strong>10 m × 1 m</strong>, modelada en 2D <span class="mono">plane strain</span>.</li>
+          <li>En \(t_0=0\) se aplica de golpe \(\sigma_0=10\,000\) Pa → respuesta <strong>no drenada</strong>.</li>
+          <li>Cara superior <strong>drenante</strong> (\(p=0\)); laterales y base <strong>selladas</strong> y con desplazamiento normal fijo.</li>
+          <li>El agua escapa lentamente por arriba: la sobrepresión se disipa y la columna asienta.</li>
+        </ul>
+      </div>
+      <div class="reveal">
+        <figure><img src="figs/tp3_esquema.png" alt="Esquema de la columna de Terzaghi">
+        <figcaption>Geometría, carga y condiciones de borde</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 — GOVERNING EQUATIONS -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 2 · Ecuaciones de gobierno</div>
+    <h2 class="reveal">Dos balances acoplados de <em>Biot</em></h2>
+    <p class="reveal lead">El sólido y el fluido se hablan: la tensión depende de la presión, y el flujo depende de cómo se deforma el sólido.</p>
+    <div class="reveal eqbox">
+      <span class="lbl">Balance de momento (sólido)</span>
+      \[ \nabla\!\cdot\!\boldsymbol\sigma=\mathbf 0,\qquad \boldsymbol\sigma=\mathbb C:\boldsymbol\varepsilon(\mathbf u)-\alpha\,p\,\mathbf I \]
+    </div>
+    <div class="reveal eqbox cyan">
+      <span class="lbl">Balance de masa (fluido)</span>
+      \[ \frac{1}{M}\frac{\partial p}{\partial t}+\alpha\,\nabla\!\cdot\!\frac{\partial\mathbf u}{\partial t}-\nabla\!\cdot\!\Big(\tfrac{k}{\mu_f}\nabla p\Big)=0 \]
+    </div>
+    <p class="reveal muted" style="margin-top:.6rem">El término de acople es <strong>\(\alpha\)</strong>: aparece en ambas ecuaciones. Sin él, serían elasticidad y difusión independientes.</p>
+  </section>
+
+  <!-- 4 — FE MATRICES -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 3 · Discretización por elementos finitos</div>
+    <h2 class="reveal">Cuatro matrices lo contienen todo</h2>
+    <p class="reveal lead">La forma débil + interpolación nodal convierten las PDE en un sistema matricial en \(\mathbf u\) y \(\mathbf p\).</p>
+    <div class="reveal cols">
+      <div class="eqbox"><span class="lbl">Rigidez mecánica · K</span>\[ \mathbf K=\!\int\!\mathbf B^{\!\top}\mathbb C\,\mathbf B\,d\Omega \]</div>
+      <div class="eqbox cyan"><span class="lbl">Permeabilidad · H</span>\[ \mathbf H=\!\int\!(\nabla N_p)^{\!\top}\tfrac{k}{\mu_f}(\nabla N_p)\,d\Omega \]</div>
+    </div>
+    <div class="reveal cols">
+      <div class="eqbox"><span class="lbl">Acople · Q</span>\[ \mathbf Q=\!\int\!\alpha\,\mathbf B^{\!\top}\mathbf m\,N_p\,d\Omega \]</div>
+      <div class="eqbox cyan"><span class="lbl">Almacenamiento · S</span>\[ \mathbf S=\!\int\!\tfrac{1}{M}N_p^{\!\top}N_p\,d\Omega \]</div>
+    </div>
+    <p class="reveal muted" style="margin-top:.5rem"><strong>K</strong> usa \(\mathbf B\) (desplazamiento); <strong>H, S</strong> usan \(N_p\) (presión); <strong>Q</strong> los mezcla — es el puente.</p>
+  </section>
+
+  <!-- 5 — TAYLOR-HOOD -->
+  <section class="slide">
+    <div class="cols">
+      <div>
+        <div class="reveal kicker">Paso 4 · Interpolación mixta</div>
+        <h2 class="reveal">Taylor–Hood: <em>no</em> compartir funciones de forma</h2>
+        <ul class="reveal clean">
+          <li>Desplazamiento: <strong>Q8</strong> (8 nodos, cuadrático).</li>
+          <li>Presión: <strong>Q4</strong> sólo en los 4 nodos esquina (bilineal).</li>
+          <li>Esto satisface la condición <strong>inf-sup (LBB)</strong> y evita oscilaciones espurias de presión.</li>
+          <li>Si \(\mathbf u\) y \(p\) usaran el mismo orden → inestabilidad numérica.</li>
+        </ul>
+      </div>
+      <div class="reveal">
+        <div class="eldiagram">
+          <div>
+            <svg width="180" height="180" viewBox="0 0 180 180">
+              <rect x="20" y="20" width="140" height="140" fill="rgba(95,199,214,.06)" stroke="var(--line-strong)" stroke-width="1.5"/>
+              <!-- mid-edge (cyan, open) -->
+              <circle cx="90" cy="20" r="7" fill="var(--ink)" stroke="var(--cyan)" stroke-width="2"/>
+              <circle cx="160" cy="90" r="7" fill="var(--ink)" stroke="var(--cyan)" stroke-width="2"/>
+              <circle cx="90" cy="160" r="7" fill="var(--ink)" stroke="var(--cyan)" stroke-width="2"/>
+              <circle cx="20" cy="90" r="7" fill="var(--ink)" stroke="var(--cyan)" stroke-width="2"/>
+              <!-- corners (amber, filled) -->
+              <circle cx="20" cy="20" r="8" fill="var(--amber)"/>
+              <circle cx="160" cy="20" r="8" fill="var(--amber)"/>
+              <circle cx="160" cy="160" r="8" fill="var(--amber)"/>
+              <circle cx="20" cy="160" r="8" fill="var(--amber)"/>
+            </svg>
+            <div class="elcap"><b>●</b> esquina: \(u\)+\(p\)<br><span style="color:var(--cyan)">○</span> medio: sólo \(u\)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 — ASSEMBLY -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 5 · Ensamblaje global</div>
+    <h2 class="reveal">Dos espacios de grados de libertad</h2>
+    <p class="reveal lead">Como la presión vive sólo en las esquinas, el sistema de presión es <strong>más chico</strong> que el de desplazamiento.</p>
+    <div class="reveal cols">
+      <div class="card">
+        <p class="mono" style="color:var(--amber);font-size:.85rem;letter-spacing:.1em">DESPLAZAMIENTO</p>
+        <p style="font-size:2.4rem;font-family:var(--serif);font-weight:600">2·n<sub style="font-size:1rem">nod</sub></p>
+        <p class="muted">todos los nodos (Q8), 2 GDL c/u</p>
+      </div>
+      <div class="card">
+        <p class="mono" style="color:var(--cyan);font-size:.85rem;letter-spacing:.1em">PRESIÓN</p>
+        <p style="font-size:2.4rem;font-family:var(--serif);font-weight:600">n<sub style="font-size:1rem">esquina</sub></p>
+        <p class="muted">sólo nodos esquina (Q4), 1 GDL</p>
+      </div>
+    </div>
+    <p class="reveal muted" style="margin-top:1.3rem">Un mapa <span class="mono">nodo → GDL de presión</span> dirige el <em>scatter</em> de <strong>H, Q, S</strong> hacia el subsistema reducido. <span class="muted">(p. ej. malla Q8 de 2×20: 330 GDL de \(u\) vs 63 de \(p\)).</span></p>
+  </section>
+
+  <!-- 7 — TIME / MONOLITHIC -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 6 · Discretización temporal</div>
+    <h2 class="reveal">Euler implícito → sistema <em>monolítico</em></h2>
+    <p class="reveal lead">En cada paso de tiempo, el sistema acoplado completo se escribe como un bloque \(2\times2\):</p>
+    <div class="reveal eqbox">
+      \[ \begin{bmatrix}\mathbf K & -\mathbf Q\\[2pt] \tfrac{1}{\Delta t}\mathbf Q^{\!\top} & \tfrac{1}{\Delta t}\mathbf S+\mathbf H\end{bmatrix}\!\begin{bmatrix}\mathbf u^{n+1}\\[2pt]\mathbf p^{n+1}\end{bmatrix}=\begin{bmatrix}\mathbf F\\[2pt]\mathbf r^{n}\end{bmatrix} \]
+    </div>
+    <p class="reveal muted" style="margin-top:.6rem">Resolverlo de una sola vez es caro y rígido. La idea: <strong>iterar sobre los bloques diagonales</strong> (mecánico ↔ flujo) hasta converger. Esa elección es lo que define los dos esquemas siguientes.</p>
+  </section>
+
+  <!-- 8 — STAGGERED -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 7 · Esquema staggered (undrained split)</div>
+    <h2 class="reveal">Resolver, alternar, repetir</h2>
+    <div class="reveal eqbox">
+      <span class="lbl">1 · Paso mecánico (fija p)</span>
+      \[ \mathbf K\,\mathbf u^{(k)}=\mathbf F+\mathbf Q\,\mathbf p^{(k-1)} \]
+    </div>
+    <div class="reveal eqbox cyan">
+      <span class="lbl">2 · Paso de flujo (fija u)</span>
+      \[ (\mathbf S+\Delta t\,\mathbf H)\,\mathbf p^{(k)}=\mathbf S\,\mathbf p^{n}-\mathbf Q^{\!\top}(\mathbf u^{(k)}-\mathbf u^{n}) \]
+    </div>
+    <p class="reveal muted" style="margin-top:.5rem">Sencillo y modular — pero su <strong>factor de contracción</strong> es \(\rho_{\text{und}}=\alpha^2 M/K_{dr}\). Si \(\rho_{\text{und}}>1\), <strong>diverge</strong>. Ese es el talón de Aquiles.</p>
+  </section>
+
+  <!-- 9 — FIXED STRESS -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 8 · Fixed-stress split</div>
+    <h2 class="reveal">Estabilizar añadiendo una <em>rigidez ficticia</em></h2>
+    <p class="reveal lead">Se agrega \(\mathbf L=(\alpha^2/K_{dr})\!\int N_p^{\top}N_p\,d\Omega\) al paso de flujo, que se resuelve primero:</p>
+    <div class="reveal eqbox cyan">
+      \[ (\mathbf S+\mathbf L+\Delta t\,\mathbf H)\,\mathbf p^{(k)}=\mathbf S\,\mathbf p^{n}+\mathbf L\,\mathbf p^{(k-1)}-\mathbf Q^{\!\top}(\mathbf u^{(k-1)}-\mathbf u^{n}) \]
+    </div>
+    <p class="reveal">En la convergencia \(\mathbf p^{(k)}=\mathbf p^{(k-1)}\), así que <strong>\(\mathbf L\) se cancela</strong> y se recupera la ecuación exacta.</p>
+    <p class="reveal muted">Su contracción \(\rho_{fs}=\alpha^2 M/(K_{dr}+\alpha^2 M)<1\) <strong>siempre</strong> → incondicionalmente estable.</p>
+  </section>
+
+  <!-- 10 — IC + RATIO + CONVERGENCE -->
+  <section class="slide">
+    <div class="reveal kicker">Paso 9 · Cierre del lazo</div>
+    <h2 class="reveal">Arranque, diagnóstico y parada</h2>
+    <div class="reveal cols">
+      <div class="card">
+        <p class="mono" style="color:var(--amber);font-size:.8rem;letter-spacing:.1em">CONDICIÓN INICIAL (no drenada)</p>
+        \[ p_0=\frac{\alpha M\sigma_0}{K_{dr}+\alpha^2 M} \]
+        <p class="muted" style="font-size:.95rem">y \(\mathbf u(0)\) del equilibrio \(\mathbf K\mathbf u=\mathbf F+\mathbf Q\mathbf p_0\).</p>
+      </div>
+      <div class="card">
+        <p class="mono" style="color:var(--cyan);font-size:.8rem;letter-spacing:.1em">CRITERIO DE PARADA</p>
+        \[ \frac{\lVert \mathbf p^{(k)}-\mathbf p^{(k-1)}\rVert_2}{\max(\lVert\mathbf p^{(k)}\rVert_2,1)}<\text{tol} \]
+      </div>
+    </div>
+    <p class="reveal" style="margin-top:1.2rem">El número que predice todo: <strong>\(\alpha^2 M/K_{dr}\)</strong>.
+      <span class="tag cy">Set 1 = 0.056 &lt; 1</span><span class="tag" style="background:var(--rust);color:#fff;border-color:var(--rust)">Set 2 = 8.08 &gt; 1</span></p>
+  </section>
+
+  <!-- 11 — RESULT SET 1 -->
+  <section class="slide">
+    <div class="cols wide">
+      <div>
+        <div class="reveal kicker">Paso 10 · Resultado · Set 1</div>
+        <h2 class="reveal">Acople débil → staggered <em>converge</em></h2>
+        <ul class="reveal clean">
+          <li>\(\alpha^2 M/K_{dr}=0.056\ll1\): ~5 iteraciones por paso.</li>
+          <li>FEM (marcadores) sobre la solución analítica (trazos): coinciden.</li>
+          <li>(b) se grafica el <strong>incremento de asentamiento</strong> \(u_y(t)-u_y(0)\): el asentamiento total lo domina la respuesta no drenada.</li>
+        </ul>
+      </div>
+      <figure class="reveal"><img src="figs/tp3_tabla1.png" alt="Presión y asentamiento, Set 1">
+      <figcaption>(a) p/p₀ y (b) asentamiento por consolidación vs profundidad</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- 12 — RESULT SET 2 DIVERGES -->
+  <section class="slide">
+    <div class="cols wide">
+      <figure class="reveal"><img src="figs/tp3_divergencia.png" alt="Divergencia del staggered, Set 2">
+      <figcaption>‖p⁽ᵏ⁾‖₂ vs iteración k (escala log)</figcaption></figure>
+      <div>
+        <div class="reveal kicker">Paso 11 · Resultado · Set 2</div>
+        <h2 class="reveal">Acople fuerte → staggered <em>estalla</em></h2>
+        <ul class="reveal clean">
+          <li>\(\alpha^2 M/K_{dr}=8.08>1\): la presión crece en cada iteración.</li>
+          <li>La norma alcanza \(\sim10^{250}\) y la solución desborda en el paso 7.</li>
+          <li>Reducir \(\Delta t\) <strong>retrasa</strong> el colapso pero no lo evita: no es condicional.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 — RESULT FIXED STRESS -->
+  <section class="slide">
+    <div class="cols wide">
+      <div>
+        <div class="reveal kicker">Paso 12 · Resultado · Set 2</div>
+        <h2 class="reveal">Fixed-stress <em>rescata</em> el caso fuerte</h2>
+        <ul class="reveal clean">
+          <li>Mismo Set 2 que hacía divergir al staggered.</li>
+          <li>\(\rho_{fs}=0.89<1\): converge en <strong>~2 iteraciones</strong> por paso.</li>
+          <li>Reproduce la analítica; el mayor \(c_v\) disipa la presión hacia \(t\approx300\) s.</li>
+        </ul>
+      </div>
+      <figure class="reveal"><img src="figs/tp3_fixedstress.png" alt="Fixed-stress, Set 2">
+      <figcaption>p/p₀ vs profundidad — FEM vs analítica</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- 14 — SYNTHESIS -->
+  <section class="slide">
+    <div class="reveal kicker">Síntesis</div>
+    <h2 class="reveal">El hilo conductor</h2>
+    <p class="reveal lead" style="max-width:none">Toda la cadena existe para responder una pregunta de estabilidad:</p>
+    <div class="reveal" style="margin-top:1rem;display:flex;flex-direction:column;gap:.7rem">
+      <div class="verdict"><span class="dot ok"></span><p><strong>Taylor–Hood</strong> garantiza presiones limpias (inf-sup).</p></div>
+      <div class="verdict"><span class="dot ok"></span><p>El cociente <strong>\(\alpha^2 M/K_{dr}\)</strong> predice si el staggered convergerá.</p></div>
+      <div class="verdict"><span class="dot bad"></span><p>Si el acople es fuerte, el staggered <strong>diverge</strong> sin importar \(\Delta t\).</p></div>
+      <div class="verdict"><span class="dot ok"></span><p>El <strong>fixed-stress split</strong> es incondicionalmente estable y barato.</p></div>
+    </div>
+    <p class="reveal mono muted" style="margin-top:2rem;font-size:.78rem;letter-spacing:.18em">FIN · use ← → para navegar</p>
+  </section>
+
+</div>
+
+<div class="nav-zone left"  onclick="go(-1)"></div>
+<div class="nav-zone right" onclick="go(1)"></div>
+<div class="dots" id="dots"></div>
+<div class="hint">← → · espacio</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const dotsWrap=document.getElementById('dots');
+let i=0;
+document.getElementById('tot').textContent=String(slides.length).padStart(2,'0');
+slides.forEach((_,n)=>{const b=document.createElement('button');b.onclick=()=>show(n);dotsWrap.appendChild(b);});
+const dots=[...dotsWrap.children];
+
+function show(n){
+  i=Math.max(0,Math.min(slides.length-1,n));
+  slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+  dots.forEach((d,k)=>d.classList.toggle('on',k===i));
+  document.getElementById('cur').textContent=String(i+1).padStart(2,'0');
+  document.getElementById('prog').style.width=((i)/(slides.length-1)*100)+'%';
+}
+function go(d){show(i+d);}
+window.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();go(1);}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(-1);}
+  else if(e.key==='Home')show(0);
+  else if(e.key==='End')show(slides.length-1);
+});
+// touch
+let tx=0;
+addEventListener('touchstart',e=>tx=e.touches[0].clientX,{passive:true});
+addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50)go(dx<0?1:-1);},{passive:true});
+show(0);
+</script>
+</body>
+</html>
